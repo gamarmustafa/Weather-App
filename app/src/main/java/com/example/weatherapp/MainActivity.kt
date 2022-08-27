@@ -12,6 +12,8 @@ import android.os.Bundle
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -33,6 +35,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var mFusedLocationClient: FusedLocationProviderClient
     private var mProgressDialog:Dialog? = null
     private var binding :ActivityMainBinding? = null
+
+    private var mLatitude: Double = 0.0
+
+    private var mLongitude: Double = 0.0
     override fun onCreate(savedInstanceState: Bundle?) {
         binding = ActivityMainBinding.inflate(layoutInflater)
         super.onCreate(savedInstanceState)
@@ -57,19 +63,34 @@ class MainActivity : AppCompatActivity() {
                         requestLocationData()
                     }
 
-                    if (report.isAnyPermissionPermanentlyDenied) { Toast.makeText(this@MainActivity, "You have denied location permission. Please allow it.",
+                    if (report.isAnyPermissionPermanentlyDenied) { Toast.makeText(this@MainActivity,
+                        "You have denied location permission. Please allow it.",
                             Toast.LENGTH_SHORT).show()
                     }
                 }
 
-                override fun onPermissionRationaleShouldBeShown(permissions: MutableList<PermissionRequest>?, token: PermissionToken?) {
+                override fun onPermissionRationaleShouldBeShown(
+                    permissions: MutableList<PermissionRequest>?,
+                    token: PermissionToken?) {
                     showRationalDialogForPermissions()
                 }
             }).onSameThread()
             .check()
         }
     }
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_main,menu)
+        return true
+    }
 
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when(item.itemId){
+            R.id.action_refresh -> {
+                getLocationWeatherDetails()
+                true
+            }else -> super.onOptionsItemSelected(item)
+        }
+    }
     private fun isLocationEnabled(): Boolean {
 
         val locationManager: LocationManager =
@@ -108,18 +129,18 @@ class MainActivity : AppCompatActivity() {
         mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         mFusedLocationClient.requestLocationUpdates(mLocationRequest, mLocationCallback, Looper.myLooper())
     }
+
     private val mLocationCallback = object : LocationCallback() {
         override fun onLocationResult(locationResult: LocationResult) {
             val mLastLocation: Location = locationResult.lastLocation!!
-            val latitude = mLastLocation.latitude
-            Log.i("Current Latitude", "$latitude")
-
-            val longitude = mLastLocation.longitude
-            Log.i("Current Longitude", "$longitude")
-            getLocationWeatherDetails(latitude, longitude)
+            mLatitude = mLastLocation.latitude
+            Log.e("Current Latitude", "$mLatitude")
+            mLongitude = mLastLocation.longitude
+            Log.e("Current Longitude", "$mLongitude")
+            getLocationWeatherDetails()
         }
     }
-    private fun getLocationWeatherDetails(latitude: Double, longitude: Double) {
+    private fun getLocationWeatherDetails() {
         if (Constants.isNetworkAvailable(this@MainActivity)) {
             val retrofit: Retrofit = Retrofit.Builder().baseUrl(Constants.BASE_URL)
                 .addConverterFactory(GsonConverterFactory.create()).build()
@@ -128,8 +149,10 @@ class MainActivity : AppCompatActivity() {
                 retrofit.create<WeatherService>(WeatherService::class.java)
 
             val listCall: Call<WeatherResponse> = service.getWeather(
-                latitude, longitude, Constants.METRIC_UNIT, Constants.APP_ID)
+                mLatitude, mLongitude, Constants.METRIC_UNIT, Constants.APP_ID)
+
             showProgressDialog()
+
             listCall.enqueue(object :Callback<WeatherResponse>{
                 override fun onResponse(response: Response<WeatherResponse>?, retrofit: Retrofit?) {
                     if (response!!.isSuccess){
@@ -172,7 +195,6 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetTextI18n")
     private fun setUpUI(weatherList:WeatherResponse){
         for (i in weatherList.weather.indices){
-            Log.i("Weather Name", weatherList.weather.toString())
             binding?.tvMain?.text = weatherList.weather[i].main
             binding?.tvMainDescription?.text = weatherList.weather[i].description
             binding?.tvTemp?.text = weatherList.main.temp.toString() + getUnit(application.resources.configuration.locale.toString())
@@ -204,12 +226,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
     private fun getUnit (value:String):String?{
+
         var value = "°C"
         if("US" == value || "LR" == value || "MM" == value){
             value = "°F"
         }
         return value
     }
+    @SuppressLint("SimpleDateFormat")
     private fun unixTime(timex : Long):String?{
         val date = Date(timex*1000L)
         val sdf = SimpleDateFormat("HH:mm")
@@ -217,5 +241,7 @@ class MainActivity : AppCompatActivity() {
 
         return sdf.format(date)
     }
+
+
 
 }
